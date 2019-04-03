@@ -1,0 +1,441 @@
+/*
+ * ΕΠΑ.Λ. Χρυσούπολης
+ */
+#include <SPFD5408_Adafruit_TFTLCD.h> // Hardware-specific library
+#include "DHT.h"
+#include <Wire.h>
+#include "RTClib.h"
+#include <SDS011.h>
+#include <SPI.h> 
+#include <SoftwareSerial.h>
+#include "TSL2561.h"
+#include <SD.h>
+#include "Adafruit_CCS811.h"
+
+SoftwareSerial BTserial(15, 14); // RX | TX
+  
+Adafruit_CCS811 ccs;
+
+SDS011 my_sds;
+float p10,p25;
+
+// *** Define Pin of DHT22 used***
+#define DHTPIN 25
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+RTC_DS1307 rtc;
+char monthOfTheYear[12][4]={"Dec","Ian","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov"};
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+// *** Define Pin of LCD used***
+#define LCD_CS A3
+#define LCD_CD A2
+#define LCD_WR A1
+#define LCD_RD A0
+#define LCD_RESET A4
+
+// *** Define Name of Color
+#define BLACK   0x0000
+#define WHITE   0xFFFF
+#define RED     0xF800
+#define GREEN   0x07E0
+#define BLUE    0x001F
+#define CYAN    0x07FF
+#define MAGENTA 0xF81F
+#define YELLOW  0xFFE0
+#define GREY    0x2108
+#define GRAY2   0x8410
+#define ORANGE  0xFA60
+#define LIME    0x07FF
+#define AQUA    0x04FF
+#define PINK    0xF8FF
+
+Adafruit_TFTLCD tft(LCD_CS, LCD_CD, LCD_WR, LCD_RD, LCD_RESET);
+
+char* hourZero[]={"12", "01", "02", "03", "04", "05", "06", "07", "08", "09"};
+char* minuteZero[]={"00", "01", "02", "03", "04", "05", "06", "07", "08", "09"};
+char* dayZero[]={"31", "01", "02", "03", "04", "05", "06", "07", "08", "09"};
+
+TSL2561 tsl(TSL2561_ADDR_FLOAT); 
+
+const int PMledLow=26;
+const int PMledMed=28;
+const int PMledHigh=30;
+
+const int chipSelect = 53;
+
+const int UVsensor = A15;
+int UVvalue1;
+int UVvalue2;
+int UVvalue3;
+
+void setup() {
+  tsl.begin();
+  Wire.begin();
+  rtc.begin();
+  my_sds.begin(64,65);                              
+  Serial.begin(9600);                               
+  BTserial.begin(9600);
+  SD.begin(chipSelect);
+  ccs.begin();
+  
+pinMode(PMledLow, OUTPUT);
+pinMode(PMledMed, OUTPUT);
+pinMode(PMledHigh, OUTPUT);
+digitalWrite(PMledLow, HIGH);
+digitalWrite(PMledMed, HIGH);
+digitalWrite(PMledHigh, HIGH);
+
+//rtc.adjust(DateTime(2019,03, 22, 13, 59, 00)); //yy,mm,dd,hh,mm,ss
+  
+    tft.reset(); //Reset LCD to begin
+    tft.begin(0x9341); //SDFP5408 Chipset ID on Library
+    tft.setRotation(3); // Set Rotation at 0 degress (default)
+    tft.fillScreen(BLACK); //Set Background Color with BLACK
+   
+    //Design Interface (lines)
+    tft.fillRect(0,236,320,4,RED);      //orizontia katw
+    tft.fillRect(0,0,4,240,RED);        //ka8eth aristera
+    tft.fillRect(316,0,4,240,RED);      //ka8eth deksia
+    //tft.fillRect(145,130,2,240,RED);    //ka8eth mesaia
+    tft.fillRect(0,52,320,4,RED);       //orizontia2 
+    tft.fillRect(0,78,320,2,RED);       //orizontia3
+    tft.fillRect(0,104,320,2,RED);      //orizontia4 
+    tft.fillRect(0,130,320,2,RED);      //orizontia5
+    tft.fillRect(0,156,320,2,RED);      //orizontia6
+    tft.fillRect(0,182,320,2,RED);      //orizontia7
+    tft.fillRect(0,208,320,2,RED);      //orizontia8
+    tft. fillRect(240,130,2,80,RED);   //ka8eth mikrh mesaia
+    tft.fillRect(0,0,320,35,RED);        //orizontia1 panw
+    
+    tft.setCursor (4,2);
+    tft.setTextSize (2);
+    tft.setTextColor (YELLOW,RED);
+    tft.print ("  CHRYSOUPOLI VOCATIONAL    & TECHNICAL HIGH SCHOOL");
+    tft.setCursor (9,36);
+    tft.setTextSize (2);
+    tft.setTextColor (CYAN,BLACK);
+    tft.print ("Electronics & Elecricians");
+
+    tft.setCursor (8,59);
+    tft.setTextSize (1);
+    tft.setTextColor (GREEN,BLACK);
+    tft.print ("METER OF TEMPERATUTE, HUMIDITY, PRESSURE, LUMINANCE");
+    tft.setCursor (20,69);
+    tft.setTextSize (1);
+    tft.setTextColor (GREEN,BLACK);
+    tft.print ("INFRARED, UV intex, VOCs, CO2, PM10 & PM2.5");      
+
+    tsl.setGain(TSL2561_GAIN_0X);         // set no gain (for bright situtations)
+    tsl.setTiming(TSL2561_INTEGRATIONTIME_13MS);  // shortest integration time (bright light)
+
+}
+    
+void loop() {
+
+    DateTime now = rtc.now(); 
+ 
+    tft.setCursor (30,86); //(70, 86)
+    tft.setTextSize (2);
+    tft.setTextColor (YELLOW,BLACK);
+    tft.print (daysOfTheWeek[now.dayOfTheWeek()]);
+    tft.print (" ");
+    if (now.day() >= 0 && now.day() < 10) {
+    tft.setTextSize (2);  
+    tft.print(dayZero[now.day()]);
+    }
+    else{
+    tft.print(now.day());
+    }
+    tft.setTextSize (1);
+   tft.print (" ");
+   tft.setTextSize (2);
+    tft.print (monthOfTheYear[now.month()]); 
+    
+    tft.print (" ");
+    tft.setTextSize (2);
+    tft.setTextColor (YELLOW,BLACK);
+    if (now.hour() >= 0 && now.hour() < 10) {
+    tft.print(hourZero[now.hour()]);
+    }
+    else{
+    tft.print(now.hour());
+    }
+   
+    tft.setTextSize (2);
+    tft.setTextColor (YELLOW,BLACK);
+    tft.print (":");
+   
+    tft.setTextSize (2);
+    tft.setTextColor (YELLOW,BLACK);
+    if (now.minute() >= 0 && now.minute() < 10) {
+    tft.print(minuteZero[now.minute()]);
+    }
+    else{
+    tft.print(now.minute());
+    }
+    
+  //******Μέτρηση & απεικόνιση Θερμοκρασίας, Σχετικής Υγρασίας, Πιεσης *******/
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  float f = dht.readTemperature(true);
+
+    tft.setCursor (10,112);
+    tft.setTextSize (2);
+    tft.setTextColor (CYAN,BLACK);
+    tft.print ("Temp:");                           //TEMP
+    tft.setTextSize (2);
+    tft.print (t,0); 
+    tft.print ("oC  ");
+
+    tft.setTextSize (2);
+    tft.print ("Hum:");                           //Humidity %
+    tft.setTextSize (2);
+    tft.print (h,0); 
+    tft.print ("% ");
+    
+//******Μέτρηση & απεικόνιση Αερίων Ρύπων ΡΜ10 & ΡΜ2.5 *******/ 
+int error = my_sds.read(&p25,&p10);       
+   if (! error) {
+    tft.setCursor (10,138);
+    tft.setTextSize (2);
+    tft.setTextColor (GREEN,BLACK);
+    tft.print ("PM10:  "); 
+    //tft.setCursor (150,138);
+    tft.print (p10,0); 
+    tft.print ("ug/m3   ");
+     
+    tft.setCursor (10,164);
+    tft.print ("PM2.5: ");
+   // tft.setCursor (150,164);
+    tft.print (p25,0); 
+     tft.print ("ug/m3   ");
+
+    if (p10<=25){
+    tft.setCursor (245,138);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,GREEN);
+    tft.print (" VLow");
+    }
+
+    else if (25<p10 && p10<=50){
+    tft.setCursor (245,138);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,YELLOW);
+    tft.print (" Low ");
+    }
+
+    else if (50<p10 && p10<=90){
+    tft.setCursor (245,138);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,ORANGE);
+    tft.print (" Med ");
+    }
+
+    else if (90<p10 && p10<=180){
+    tft.setCursor (245,138);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,RED);
+    tft.print (" High");
+    }
+    
+    else if (180<p10){
+    tft.setCursor (245,138);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,MAGENTA);
+    tft.print ("VHigh");
+    }
+
+    if (p25<=15){
+    tft.setCursor (245,164);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,GREEN);
+    tft.print (" VLow");
+    }
+
+    else if (15<p25 && p25<=30){
+    tft.setCursor (245,164);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,YELLOW);
+    tft.print (" Low ");
+    }
+
+    else if (30<p25 && p25<=55){
+    tft.setCursor (245,164);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,ORANGE);
+    tft.print (" Med ");
+    }
+
+    else if (55<p25 && p25<=110){
+    tft.setCursor (245,164);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,RED);
+    tft.print (" High");
+    }
+    
+    else if (110<p25){
+    tft.setCursor (245,164);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,MAGENTA);
+    tft.print ("VHigh");
+    }
+   }
+     
+/******************Μέτρηση & απεικόνιση Φωτεινότητας***************/
+  uint16_t x = tsl.getLuminosity(TSL2561_VISIBLE);     
+  uint32_t lum = tsl.getFullLuminosity();
+  uint16_t ir, full;
+  ir = lum >> 16;
+  full = lum & 0xFFFF;
+
+    int LM=tsl.calculateLux(full, ir);  
+
+//***************Μέτρηση & απεικόνιση Δείκτη UV******
+  UVvalue1 = analogRead(UVsensor);  
+  UVvalue2=map(UVvalue1, 0,1023,0, 5000);
+  UVvalue3=map(UVvalue2, 0,1170, 0, 11);
+  Serial.println(UVvalue3);
+   tft.setCursor (10,190);
+    tft.setTextSize (2);
+    tft.setTextColor (MAGENTA,BLACK);
+    tft.print ("UVintex:"); 
+    //tft.setCursor (150,190);
+    tft.print (UVvalue3);
+    tft.print (" ");  
+    
+if (UVvalue3<=2){
+    tft.setCursor (245,190);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,GREEN);
+    tft.print (" VLow");
+    }
+
+    else if (3<UVvalue3 && UVvalue3<=5){
+    tft.setCursor (245,190);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,YELLOW);
+    tft.print (" Low ");
+    }
+
+    else if (6<UVvalue3 && UVvalue3<=7){
+    tft.setCursor (245,190);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,ORANGE);
+    tft.print (" Med ");
+    }
+
+    else if (8<UVvalue3 && UVvalue3<=10){
+    tft.setCursor (245,190);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,RED);
+    tft.print (" High");
+    }
+    
+    else if (11<UVvalue3){
+    tft.setCursor (245,138);
+    tft.setTextSize (2);
+    tft.setTextColor (BLACK,MAGENTA);
+    tft.print ("VHigh");
+    }
+
+    //*************Μέτρηση & Απεικόνιση VOCs & CO2***********
+     ccs.readData();
+     int eCO2 = ccs.geteCO2();
+     int TVOC = ccs.getTVOC();
+     tft.setCursor (10,216);
+     tft.setTextSize (2);
+     tft.setTextColor (LIME,BLACK);
+     tft.print ("VOCs:"); 
+     tft.print (TVOC); 
+     tft.print ("ppb  CO2:");
+     tft.print (eCO2); 
+     tft.print ("ppm   ");       
+ 
+    //*********************BT Serial************************
+   BTserial.print(p10);
+   BTserial.print(",");
+   BTserial.print(p25);
+   BTserial.print(",");
+   BTserial.print(t);
+   BTserial.print(",");
+   BTserial.print(h);
+   BTserial.print(",");
+   BTserial.print(LM);
+   BTserial.print(",");
+   BTserial.print(ir);
+   BTserial.print(",");
+   BTserial.print(UVvalue3);
+   BTserial.print(",");
+   BTserial.print(TVOC);   
+   BTserial.print(",");
+   BTserial.print(eCO2);
+   BTserial.print(";");
+
+//**********************SD Card & Serial*****************************
+   File dataFile = SD.open("datalog.txt", FILE_WRITE);
+   if (dataFile) {
+    
+   dataFile.print(now.year(), DEC); //Print date and time(not saved yet)
+   dataFile.print("/");
+   dataFile.print(now.month(), DEC);
+   dataFile.print("/");
+   dataFile.print(now.day(), DEC);
+   dataFile.print(" ");
+   dataFile.print(now.hour(), DEC);
+   dataFile.print(":");
+   dataFile.print(now.minute(), DEC);
+   dataFile.print(":");
+   dataFile.print(now.second(), DEC);
+
+   dataFile.print("  PM2.5: "+String(p25));
+   dataFile.print("ug/m3");
+   dataFile.print("  PM10: "+String(p10));
+   dataFile.print("ug/m3");
+   dataFile.print("  Temperature: "+String(t));
+   dataFile.print("oC");
+   dataFile.print("  Humidity: "+String(h));
+   dataFile.print("%");
+   dataFile.print("mbar");
+   dataFile.print("  Luminance: "+String(LM));
+   dataFile.print("Lux"); 
+   dataFile.println("  Infrared: "+String(ir));
+   dataFile.print("  UV intex: "+String(UVvalue3));
+   dataFile.print("  VOCs: "+String(TVOC));
+   dataFile.print("ppb"); 
+   dataFile.print("  CO2: "+String(eCO2));
+   dataFile.print("ppm");      
+   dataFile.close();
+   
+    tft.setCursor (245,112);
+    tft.setTextSize (2);
+    tft.setTextColor (GREEN,BLACK);
+    tft.print ("SD ok");
+    
+   Serial.print("  PM2.5: "+String(p25));
+   Serial.print("ug/m3");
+   Serial.print("  PM10: "+String(p10));
+   Serial.print("ug/m3");
+   Serial.print("  Temperature: "+String(t));
+   Serial.print("oC");
+   Serial.print("  Humidity: "+String(h));
+   Serial.print("%");
+   Serial.print("mbar");
+   Serial.print("  Luminance: "+String(LM));
+   Serial.print("Lux");
+   Serial.print("  Infrared: "+String(ir));
+   Serial.print("  UV intex: "+String(UVvalue3));
+   Serial.print("  CO2: "+String(eCO2));  
+   Serial.print("ppm, TVOC: "+String(TVOC));
+   Serial.print("ppb ");
+   }
+  
+  else {
+    tft.setCursor (245,112);
+    tft.setTextSize (2);
+    tft.setTextColor (ORANGE,BLACK);
+    tft.print ("no SD"); 
+    Serial.println("error opening datalog.txt");
+  }  
+}
